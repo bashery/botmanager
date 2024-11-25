@@ -1,14 +1,24 @@
 package main
 
 import (
+	"fmt"
 	"store"
 )
 
 func main() {
-	eng := store.NewDatabase("mydb")
-	for coll, ok := range eng.Collections {
-		println(coll, ok)
+	db, err := store.NewDatabase("mydb")
+	if err != nil {
+		fmt.Println("create db err", err)
 	}
 
-	eng.Close()
+	err = db.Insert("users", "hello")
+
+	if err != nil {
+		fmt.Println("at insert:", err)
+	}
+
+	err = db.Close()
+	if err != nil {
+		fmt.Println("at close:", err)
+	}
 }

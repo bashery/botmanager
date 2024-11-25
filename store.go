@@ -1,6 +1,8 @@
 package store
 
 import (
+	"encoding/binary"
+	"fmt"
 	"log"
 	"os"
 
@@ -8,14 +10,15 @@ import (
 )
 
 type Database struct {
-	path        string // name
-	log         *wal.Log
-	collections map[string]*Collection
+	path      string // name
+	log       *wal.Log
+	lastindex uint64
+	tables    map[string]*Table
 }
 
-type Collection struct {
+type Table struct {
 	fIndexs *os.File
-	ref     uint8 // reference collection
+	tref    uint8 // reference collection
 	lastId  uint64
 }
 
@@ -27,44 +30,81 @@ func NewIndexs(path string) *os.File {
 	return findexs
 }
 
-func NewDatabase(path string) (*Database, error) {
+func initIndexs(path string) {
+	dir, err := os.Open(path)
+	if err != nil {
+		print(err)
+	}
+
+	files, err := dir.Readdir(-1)
+	if err != nil {
+		print(err)
+	}
+
+	for _, f := range files {
+		fmt.Println(f.Name())
+	}
+}
+
+// init exists db or create new
+func InitDatabase(path string) (*Database, error) {
+	// TODO init all exists tables
+
 	opt := &wal.Options{}
 	db, err := wal.Open(path, opt)
 	if err != nil {
 		return nil, err
 	}
-	coll := &Collection{
+
+	table := &Table{
+		// TODO read all tables
 		fIndexs: NewIndexs("test"),
 	}
 
-	colls := make(map[string]*Collection, 0)
-	colls["test"] = coll
+	tables := make(map[string]*Table, 0)
+	tables["test"] = table
 
 	return &Database{
-		path:        path,
-		log:         db,
-		collections: colls,
+		path:   path,
+		log:    db,
+		tables: tables,
 	}, nil
 }
 
 // insert appends data
-func (db *Database) insert(coll, data string) error {
-	collref, ok := db.collections[coll]
+func (db *Database) Insert(table, data string) error {
+	tref, ok := db.tables[table]
 	if !ok {
-		db.collections[coll] = &Collection{
-			fIndexs: NewIndexs(coll),
+		db.tables[table] = &Table{
+			fIndexs: NewIndexs(table),
+			tref:    0,
+			lastId:  1,
 		}
-
+		tref = db.tables[table]
+		tref.tref = uint8(len(db.tables)) + 1
 	}
-	_ = collref.ref
-	db.log.Write(db.collections[coll].lastId, []byte(data))
 
+	blid := make([]byte, 8) // lastId as binay
+	binary.BigEndian.PutUint64(blid, db.tables[table].lastId)
+	fmt.Println("blid:", blid)
+
+	blid = append(blid, []byte{tref.tref}...)
+	fmt.Println("blid+tref:", blid)
+
+	bdata := append(blid, []byte(data)...)
+	fmt.Println("bdata:", bdata)
+
+	err := db.log.Write(db.tables[table].lastId, bdata)
+	if err != nil {
+		return err
+	}
+	db.tables[table].lastId++
 	return nil
 }
 
 // getData reads data from wall file
-func (db *Database) get(id uint64) ([]byte, error) {
-	return db.log.Read(id)
+func (db *Database) get(ref uint64) ([]byte, error) {
+	return db.log.Read(ref)
 }
 
 func (db *Database) markDelete(id uint64) error {
