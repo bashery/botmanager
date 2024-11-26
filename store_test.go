@@ -6,9 +6,6 @@ import (
 
 const maxItems = 11
 
-var db *Database
-var coll *Collection
-
 func Test_NewDatabase(t *testing.T) {}
 
 func Test_BuildIndex(t *testing.T) {}
